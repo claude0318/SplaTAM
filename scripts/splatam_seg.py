@@ -35,7 +35,7 @@ from utils.slam_external import calc_ssim, build_rotation, prune_gaussians, dens
 
 from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from utils.loss_utils import l1_loss, ssim
-
+from scripts.lang_render import render as lan_render
 
 
 # TODO: merge Langsplat into SplaTAM
@@ -256,7 +256,10 @@ def get_loss(params, curr_data, variables, iter_time_idx, loss_weights, use_sil_
     variables['means2D'] = rendervar['means2D']  # Gradient only accum from colour render for densification
 
     # TODO:Language_feature Rendering (找到正确的参数传入render函数)
-    render_pkg = render(viewpoint_cam, gaussians, pipe, background, opt)
+    bg_color = [0, 0, 0]
+    background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+    viewpoint_cam = curr_data['cam']
+    render_pkg = lan_render(viewpoint_cam, transformed_gaussians, pipe, background, opt)
     language_feature= render_pkg["language_feature_image"]
 
     # Depth & Silhouette Rendering
@@ -282,7 +285,7 @@ def get_loss(params, curr_data, variables, iter_time_idx, loss_weights, use_sil_
         mask = mask & presence_sil_mask
 
 
-    # TODO: Language Feature Loss
+    # Language Feature Loss
     # TODO：如何获得gt_language_feature和language_feature_mask？（Clustering/ DNS_SLAM）
     if curr_data['lan_gt'] is not None:
         Lan_1 = l1_loss(language_feature * language_feature_mask,
