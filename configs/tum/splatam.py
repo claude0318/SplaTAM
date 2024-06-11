@@ -38,7 +38,7 @@ config = dict(
     checkpoint_interval=100, # Checkpoint Interval
     use_wandb=True,
     wandb=dict(
-        entity="theairlab",
+        entity="czh327592195",
         project="SplaTAM",
         group=group_name,
         name=run_name,
@@ -46,7 +46,7 @@ config = dict(
         eval_save_qual=True,
     ),
     data=dict(
-        basedir="./data/TUM_RGBD",
+        basedir="/mnt/projects/NeuralSLAM/datasets/TUM_RGBD",
         gradslam_data_cfg=f"./configs/data/TUM/{scene_name}.yaml",
         sequence=f"rgbd_dataset_{scene_name}",
         desired_image_height=480,

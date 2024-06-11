@@ -1,13 +1,15 @@
 import os
 from os.path import join as p_join
 
-scenes = ["room0", "room1", "room2",
-          "office0", "office1", "office2",
-          "office_", "office4"]
+scenes = ["room0"]
+# scenes = ["room0", "room1", "room2",
+#           "office0", "office1", "office2",
+#           "office_", "office4"]
 
 primary_device="cuda:0"
 seed = 0
 scene_name = scenes[0]
+# scene_name = scenes[1]
 
 map_every = 1
 keyframe_every = 5
@@ -37,8 +39,13 @@ config = dict(
     save_checkpoints=False, # Save Checkpoints
     checkpoint_interval=100, # Checkpoint Interval
     use_wandb=True,
+    # Use Language Features
+    include_feature=True,
+    language_feature_dir= '/path/to/language/features',
+    feature_level=2,
+
     wandb=dict(
-        entity="theairlab",
+        entity="czh327592195",
         project="SplaTAM",
         group=group_name,
         name=run_name,
@@ -46,7 +53,8 @@ config = dict(
         eval_save_qual=True,
     ),
     data=dict(
-        basedir="./data/Replica",
+        # basedir="/mnt/projects/NeuralSLAM/datasets/Replica",
+        basedir="/mnt/workfiles/SplaTAM/datasets/Replica/", 
         gradslam_data_cfg="./configs/data/replica.yaml",
         sequence=scene_name,
         desired_image_height=680,
