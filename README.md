@@ -1,10 +1,4 @@
 
-cd /mnt/workfiles/
-bash anaconda.sh
-vim ~/.bashrc
-export PATH=/home/caozihao/anaconda3/bin:$PATH
-source ~/.bashrc
-source /home/caozihao/anaconda3/etc/profile.d/conda.sh
 
 <!-- PROJECT LOGO -->
 
@@ -77,17 +71,22 @@ source /home/caozihao/anaconda3/etc/profile.d/conda.sh
 SplaTAM has been tested on python 3.10, CUDA>=11.6. The simplest way to install all dependences is to use [anaconda](https://www.anaconda.com/) and [pip](https://pypi.org/project/pip/) in the following steps: 
 
 ```bash
+source /home/caozihao/anaconda3/etc/profile.d/conda.sh
 conda create -n splatam python=3.10
 conda activate splatam
 conda install -c "nvidia/label/cuda-11.6.0" cuda-toolkit
 conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge
 pip install -r requirements.txt
-# pip install -e submodules/diff-gaussian-rasterization
 # pip install -e submodules/segment-anything-langsplat 
-pip install -e submodules/langsplat-rasterization
+pip install -e submodules/diff_gaussian_rasterization
+pip install -e submodules/langsplat_rasterization
 pip install -e submodules/simple-knn
 
-python scripts/splatam_seg.py configs/replica/splatam.py
+
+
+nohup python scripts/splatam.py configs/replica/splatam.py &
+tail -f nohup.out
+nohup python scripts/splatam_seg.py configs/replica/splatam.py &
 ```
 API： 538f9456df28d0480864e71dd81c3a0a7469336e
 

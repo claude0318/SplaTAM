@@ -165,6 +165,7 @@ def inverse_sigmoid(x):
 
 
 def prune_gaussians(params, variables, optimizer, iter, prune_dict):
+
     if iter <= prune_dict['stop_after']:
         if (iter >= prune_dict['start_after']) and (iter % prune_dict['prune_every'] == 0):
             if iter == prune_dict['stop_after']:

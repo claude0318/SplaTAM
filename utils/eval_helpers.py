@@ -5,7 +5,8 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
-
+import sys
+sys.path.append('/mnt/workfiles/SplaTAM')
 from datasets.gradslam_datasets.geometryutils import relative_transformation
 from utils.recon_helpers import setup_camera
 from utils.slam_external import build_rotation, calc_psnr
@@ -14,7 +15,7 @@ from utils.slam_helpers import (
     quat_mult, matrix_to_quaternion
 )
 
-from diff_gaussian_rasterization import GaussianRasterizer as Renderer
+from diff_gaussian_rasterization import GaussianRasterizer_spla as Renderer
 
 from pytorch_msssim import ms_ssim
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
@@ -198,7 +199,7 @@ def report_progress(params, data, i, progress_bar, iter_time_idx, sil_thres, eve
                 rel_pt_error = torch.sqrt((rel_gt_w2c[0,3] - rel_est_w2c[0,3])**2 + (rel_gt_w2c[1,3] - rel_est_w2c[1,3])**2 + (rel_gt_w2c[2,3] - rel_est_w2c[2,3])**2)
             else:
                 rel_pt_error = torch.zeros(1).float()
-            
+
             # Calculate ATE RMSE
             ate_rmse = evaluate_ate(gt_w2c_list, latest_est_w2c_list)
             ate_rmse = np.round(ate_rmse, decimals=6)
@@ -216,13 +217,13 @@ def report_progress(params, data, i, progress_bar, iter_time_idx, sil_thres, eve
         rendervar = transformed_params2rendervar(params, transformed_gaussians)
         depth_sil_rendervar = transformed_params2depthplussilhouette(params, data['w2c'], 
                                                                      transformed_gaussians)
-        depth_sil, _, _, = Renderer(raster_settings=data['cam'])(**depth_sil_rendervar)
+        depth_sil, _, _, _, _ = Renderer(raster_settings=data['cam'])(**depth_sil_rendervar)
         rastered_depth = depth_sil[0, :, :].unsqueeze(0)
         valid_depth_mask = (data['depth'] > 0)
         silhouette = depth_sil[1, :, :]
         presence_sil_mask = (silhouette > sil_thres)
 
-        im, _, _, = Renderer(raster_settings=data['cam'])(**rendervar)
+        im, _, _, _, _ = Renderer(raster_settings=data['cam'])(**rendervar)
         if tracking:
             psnr = calc_psnr(im * presence_sil_mask, data['im'] * presence_sil_mask).mean()
         else:
@@ -319,14 +320,14 @@ def eval_online(dataset, all_params, num_frames, eval_online_dir, sil_thres,
                                                                      transformed_gaussians)
         
         # Render Depth & Silhouette
-        depth_sil, _, _, = Renderer(raster_settings=curr_data['cam'])(**depth_sil_rendervar)
+        depth_sil, _, _, _, _= Renderer(raster_settings=curr_data['cam'])(**depth_sil_rendervar)
         rastered_depth = depth_sil[0, :, :].unsqueeze(0)
         valid_depth_mask = (curr_data['depth'] > 0)
         silhouette = depth_sil[1, :, :]
         presence_sil_mask = (silhouette > sil_thres)
         
         # Render RGB and Calculate PSNR
-        im, radius, _, = Renderer(raster_settings=curr_data['cam'])(**rendervar)
+        im, radius, _, _, _ = Renderer(raster_settings=curr_data['cam'])(**rendervar)
         if mapping_iters==0 and not add_new_gaussians:
             psnr = calc_psnr(im * presence_sil_mask, curr_data['im'] * presence_sil_mask).mean()
         else:
@@ -461,7 +462,7 @@ def eval(dataset, final_params, num_frames, eval_dir, sil_thres,
                                                                      transformed_gaussians)
 
         # Render Depth & Silhouette
-        depth_sil, _, _, = Renderer(raster_settings=curr_data['cam'])(**depth_sil_rendervar)
+        depth_sil, _, _, _, _ = Renderer(raster_settings=curr_data['cam'])(**depth_sil_rendervar)
         rastered_depth = depth_sil[0, :, :].unsqueeze(0)
         # Mask invalid depth in GT
         valid_depth_mask = (curr_data['depth'] > 0)
@@ -471,7 +472,7 @@ def eval(dataset, final_params, num_frames, eval_dir, sil_thres,
         presence_sil_mask = (silhouette > sil_thres)
         
         # Render RGB and Calculate PSNR
-        im, radius, _, = Renderer(raster_settings=curr_data['cam'])(**rendervar)
+        im, radius, _, _, _= Renderer(raster_settings=curr_data['cam'])(**rendervar)
         if mapping_iters==0 and not add_new_gaussians:
             weighted_im = im * presence_sil_mask * valid_depth_mask
             weighted_gt_im = curr_data['im'] * presence_sil_mask * valid_depth_mask
@@ -698,7 +699,7 @@ def eval_nvs(dataset, final_params, num_frames, eval_dir, sil_thres,
                                                                      transformed_gaussians)
 
         # Render Depth & Silhouette
-        depth_sil, _, _, = Renderer(raster_settings=curr_data['cam'])(**depth_sil_rendervar)
+        depth_sil, _, _, _, _ = Renderer(raster_settings=curr_data['cam'])(**depth_sil_rendervar)
         rastered_depth = depth_sil[0, :, :].unsqueeze(0)
         # Mask invalid depth in GT
         valid_depth_mask = (curr_data['depth'] > 0)
@@ -716,7 +717,7 @@ def eval_nvs(dataset, final_params, num_frames, eval_dir, sil_thres,
             valid_nvs_frames.append(True)
         
         # Render RGB and Calculate PSNR
-        im, radius, _, = Renderer(raster_settings=curr_data['cam'])(**rendervar)
+        im, radius, _, _, _= Renderer(raster_settings=curr_data['cam'])(**rendervar)
         if mapping_iters==0 and not add_new_gaussians:
             weighted_im = im * presence_sil_mask * valid_depth_mask
             weighted_gt_im = curr_data['im'] * presence_sil_mask * valid_depth_mask

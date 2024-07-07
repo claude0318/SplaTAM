@@ -1,5 +1,5 @@
 import torch
-from diff_gaussian_rasterization import GaussianRasterizationSettings as Camera
+from diff_gaussian_rasterization import GaussianRasterizationSettings_spla as Camera
 
 def setup_camera(w, h, k, w2c, near=0.01, far=100):
     fx, fy, cx, cy = k[0][0], k[1][1], k[0][2], k[1][2]
@@ -20,10 +20,10 @@ def setup_camera(w, h, k, w2c, near=0.01, far=100):
         scale_modifier=1.0,
         viewmatrix=w2c,
         projmatrix=full_proj,
+        projmatrix_raw=opengl_proj,
         sh_degree=0,
         campos=cam_center,
         prefiltered=False,
-        debug = False,
-        include_feature = True
+        debug=False
     )
     return cam

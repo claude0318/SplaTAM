@@ -1,21 +1,19 @@
 import os
 from os.path import join as p_join
 
-scenes = ["room0"]
-# scenes = ["room0", "room1", "room2",
-#           "office0", "office1", "office2",
-#           "office_", "office4"]
+scenes = ["room0", "room1", "room2",
+          "office0", "office1", "office2",
+          "office_", "office4"]
 
 primary_device="cuda:0"
 seed = 0
 scene_name = scenes[0]
-# scene_name = scenes[1]
 
 map_every = 1
 keyframe_every = 5
 mapping_window_size = 24
-tracking_iters = 40
-mapping_iters = 60
+tracking_iters = 10
+mapping_iters = 15
 
 group_name = "Replica"
 run_name = f"{scene_name}_{seed}"
@@ -39,11 +37,6 @@ config = dict(
     save_checkpoints=False, # Save Checkpoints
     checkpoint_interval=100, # Checkpoint Interval
     use_wandb=True,
-    # Use Language Features
-    include_feature=True,
-    language_feature_dir= '/path/to/language/features',
-    feature_level=2,
-
     wandb=dict(
         entity="czh327592195",
         project="SplaTAM",
@@ -53,8 +46,7 @@ config = dict(
         eval_save_qual=True,
     ),
     data=dict(
-        # basedir="/mnt/projects/NeuralSLAM/datasets/Replica",
-        basedir="/mnt/workfiles/SplaTAM/datasets/Replica/", 
+        basedir="/mnt/projects/NeuralSLAM/datasets/Replica",
         gradslam_data_cfg="./configs/data/replica.yaml",
         sequence=scene_name,
         desired_image_height=680,
@@ -75,6 +67,7 @@ config = dict(
         loss_weights=dict(
             im=0.5,
             depth=1.0,
+            language=0.6
         ),
         lrs=dict(
             means3D=0.0,
@@ -84,6 +77,7 @@ config = dict(
             log_scales=0.0,
             cam_unnorm_rots=0.0004,
             cam_trans=0.002,
+            language_feature = 0.005
         ),
     ),
     mapping=dict(
@@ -96,6 +90,7 @@ config = dict(
         loss_weights=dict(
             im=0.5,
             depth=1.0,
+            language=0.6
         ),
         lrs=dict(
             means3D=0.0001,
@@ -105,6 +100,7 @@ config = dict(
             log_scales=0.001,
             cam_unnorm_rots=0.0000,
             cam_trans=0.0000,
+            language_feature = 0.005
         ),
         prune_gaussians=True, # Prune Gaussians during Mapping
         pruning_dict=dict( # Needs to be updated based on the number of mapping iterations

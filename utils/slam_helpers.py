@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from utils.slam_external import build_rotation
+from torch import nn
 
 def l1_loss_v1(x, y):
     return torch.abs((x - y)).mean()
@@ -248,6 +249,36 @@ def transformed_params2depthplussilhouette(params, w2c, transformed_gaussians):
     }
     return rendervar
 
+def transformed_params2language(params, iter, transformed_gaussians):
+    # Check if Gaussians are Isotropic
+    if params['log_scales'].shape[1] == 1:
+        log_scales = torch.tile(params['log_scales'], (1, 3))
+    else:
+        log_scales = params['log_scales']
+
+
+    if iter == 0:
+        language_feature = torch.zeros((params['means3D'].shape[0], 3), device="cuda")
+        _language_feature = nn.Parameter(language_feature.requires_grad_(True))
+        # _language_feature = _language_feature/ (_language_feature.norm(dim=-1, keepdim=True) + 1e-9)
+
+        params['language_feature'] = _language_feature  # Add to params
+
+    else:
+        _language_feature = params['language_feature']
+        # language_feature_precomp = torch.sigmoid(language_feature_precomp)
+
+    # Initialize Render Variables
+    rendervar = {
+        'means3D': transformed_gaussians['means3D'],
+        'colors_precomp': params['rgb_colors'],
+        'language_feature_precomp': _language_feature,
+        'rotations': F.normalize(transformed_gaussians['unnorm_rotations']),
+        'opacities': torch.sigmoid(params['logit_opacities']),
+        'scales': torch.exp(log_scales),
+        'means2D': torch.zeros_like(params['means3D'], requires_grad=True, device="cuda") + 0
+    }
+    return rendervar, params
 
 def transform_to_frame(params, time_idx, gaussians_grad, camera_grad):
     """
