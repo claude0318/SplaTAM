@@ -279,7 +279,7 @@ def save_im(iter_time_idx, im, color_mask, language_feature, language_feature_ma
     fig.suptitle(f"Tracking Iteration: {iter_time_idx}", fontsize=16)
     # Figure Tight Layout
     fig.tight_layout()
-    plot_dir = "/mnt/workfiles/SplaTAM/experiments/Replica/room0_0/viz"
+    plot_dir = "/mnt/workfiles/LangSplat/experiments/Replica/room0_0/viz"
     os.makedirs(plot_dir, exist_ok=True)
     plt.savefig(os.path.join(plot_dir, f"%04d.png" % iter_time_idx), bbox_inches='tight')
     plt.close()
