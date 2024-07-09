@@ -77,7 +77,7 @@ config = dict(
             log_scales=0.0,
             cam_unnorm_rots=0.0004,
             cam_trans=0.002,
-            language_feature = 0.005
+            language_feature = 0.01  #0.005
         ),
     ),
     mapping=dict(
@@ -100,7 +100,7 @@ config = dict(
             log_scales=0.001,
             cam_unnorm_rots=0.0000,
             cam_trans=0.0000,
-            language_feature = 0.005
+            language_feature = 0.01    #0.005
         ),
         prune_gaussians=True, # Prune Gaussians during Mapping
         pruning_dict=dict( # Needs to be updated based on the number of mapping iterations

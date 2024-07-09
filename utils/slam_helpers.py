@@ -260,13 +260,13 @@ def transformed_params2language(params, iter, transformed_gaussians):
     if iter == 0:
         language_feature = torch.zeros((params['means3D'].shape[0], 3), device="cuda")
         _language_feature = nn.Parameter(language_feature.requires_grad_(True))
-        # _language_feature = _language_feature/ (_language_feature.norm(dim=-1, keepdim=True) + 1e-9)
-
         params['language_feature'] = _language_feature  # Add to params
 
     else:
         _language_feature = params['language_feature']
-        # language_feature_precomp = torch.sigmoid(language_feature_precomp)
+        if _language_feature.shape[0] != params['means3D'].shape[0]:
+            _language_feature = _language_feature[:params['means3D'].shape[0]]
+            params['language_feature'] = _language_feature
 
     # Initialize Render Variables
     rendervar = {

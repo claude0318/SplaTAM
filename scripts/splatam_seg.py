@@ -390,8 +390,8 @@ def get_loss(gt_language_feature, language_feature_mask, params, curr_data, vari
         losses['im'] = torch.abs(curr_data['im'] - im).sum()
     else:
         losses['im'] = 0.8 * l1_loss_v1(im, curr_data['im']) + 0.2 * (1.0 - calc_ssim(im, curr_data['im']))
-    if tracking_iteration is not None:
-        save_im(iter_time_idx, im, color_mask, language_feature, language_feature_mask, gt_language_feature)   
+    # if tracking_iteration is not None:
+    #     save_im(iter_time_idx, im, color_mask, language_feature, language_feature_mask, gt_language_feature)   
     weighted_losses = {k: v * loss_weights[k] for k, v in losses.items()}
     loss = sum(weighted_losses.values())
 
@@ -414,6 +414,10 @@ def initialize_new_params(new_pt_cld, mean3_sq_dist, gaussian_distribution, lang
         log_scales = torch.tile(torch.log(torch.sqrt(mean3_sq_dist))[..., None], (1, 3))
     else:
         raise ValueError(f"Unknown gaussian_distribution {gaussian_distribution}")
+
+    if language_feature.shape[0] != means3D.shape[0]:
+                    # 截断 language_feature
+        language_feature = language_feature[:means3D.shape[0], :]
     params = {
         'means3D': means3D,
         'rgb_colors': new_pt_cld[:, 3:6],
@@ -742,8 +746,8 @@ def rgbd_slam(config: dict):
                      'w2c': first_frame_w2c, 'iter_gt_w2c_list': curr_gt_w2c}
         
         # Get Language Feature, NEED TO CHANGE
-        # language_feature_dir = "/mnt/projects/LangSplaTAM/room0/language_features_dim3"
-        language_feature_dir = "/mnt/projects/datasets/Replica/room0_part1/language_features_full"
+        language_feature_dir = "/mnt/projects/LangSplaTAM/room0/language_features_dim3"
+        # language_feature_dir = "/mnt/projects/datasets/Replica/room0_part1/language_features_full"
         feature_level = 3
         gt_language_feature, language_feature_mask = get_language_feature(time_idx,
             language_feature_dir, feature_level)
@@ -916,7 +920,6 @@ def rgbd_slam(config: dict):
                 print(f"\nSelected Keyframes at Frame {time_idx}: {selected_time_idx}")
             
             optimizer = initialize_optimizer(params, config['mapping']['lrs'], tracking=False) 
-
             # Mapping
             mapping_start_time = time.time()
             if num_iters_mapping > 0:
