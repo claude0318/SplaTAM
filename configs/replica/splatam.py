@@ -12,8 +12,8 @@ scene_name = scenes[0]
 map_every = 1
 keyframe_every = 5
 mapping_window_size = 24
-tracking_iters = 10
-mapping_iters = 15
+tracking_iters = 40
+mapping_iters = 60
 
 group_name = "Replica"
 run_name = f"{scene_name}_{seed}"
@@ -36,7 +36,7 @@ config = dict(
     checkpoint_time_idx=0,
     save_checkpoints=False, # Save Checkpoints
     checkpoint_interval=100, # Checkpoint Interval
-    use_wandb=True,
+    use_wandb=False,
     wandb=dict(
         entity="czh327592195",
         project="SplaTAM",
@@ -67,7 +67,8 @@ config = dict(
         loss_weights=dict(
             im=0.5,
             depth=1.0,
-            language=0.6
+            # language=0.8,
+            sem = 0.05
         ),
         lrs=dict(
             means3D=0.0,
@@ -77,7 +78,8 @@ config = dict(
             log_scales=0.0,
             cam_unnorm_rots=0.0004,
             cam_trans=0.002,
-            language_feature = 0.01  #0.005
+            # language_feature = 0.01  #0.005
+            sem = 0.0
         ),
     ),
     mapping=dict(
@@ -90,7 +92,8 @@ config = dict(
         loss_weights=dict(
             im=0.5,
             depth=1.0,
-            language=0.6
+            # language=0.6
+            sem = 0.1   
         ),
         lrs=dict(
             means3D=0.0001,
@@ -100,7 +103,8 @@ config = dict(
             log_scales=0.001,
             cam_unnorm_rots=0.0000,
             cam_trans=0.0000,
-            language_feature = 0.01    #0.005
+            # language_feature = 0.01    #0.005
+            sem  = 0.0
         ),
         prune_gaussians=True, # Prune Gaussians during Mapping
         pruning_dict=dict( # Needs to be updated based on the number of mapping iterations

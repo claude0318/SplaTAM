@@ -167,7 +167,7 @@ class GradSLAMDataset(torch.utils.data.Dataset):
         if "crop_edge" in config_dict["camera_params"].keys():
             self.crop_edge = config_dict["camera_params"]["crop_edge"]
 
-        self.color_paths, self.depth_paths, self.embedding_paths = self.get_filepaths()
+        self.color_paths, self.depth_paths, self.embedding_paths, self.instance_paths = self.get_filepaths()
         if len(self.color_paths) != len(self.depth_paths):
             raise ValueError("Number of color and depth images must be the same.")
         if self.load_embeddings:
@@ -181,6 +181,8 @@ class GradSLAMDataset(torch.utils.data.Dataset):
 
         self.color_paths = self.color_paths[self.start : self.end : stride]
         self.depth_paths = self.depth_paths[self.start : self.end : stride]
+        self.instance_paths = self.instance_paths[self.start : self.end : stride]
+
         if self.load_embeddings:
             self.embedding_paths = self.embedding_paths[self.start : self.end : stride]
         self.poses = self.poses[self.start : self.end : stride]
@@ -296,8 +298,12 @@ class GradSLAMDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         color_path = self.color_paths[index]
         depth_path = self.depth_paths[index]
+        instance_path = self.instance_paths[index]
         color = np.asarray(imageio.imread(color_path), dtype=float)
         color = self._preprocess_color(color)
+        instance = np.asarray(imageio.imread(instance_path), dtype=float)
+        instance = self._preprocess_color(instance)
+
         if ".png" in depth_path:
             # depth_data = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
             depth = np.asarray(imageio.imread(depth_path), dtype=np.int64)
@@ -308,8 +314,11 @@ class GradSLAMDataset(torch.utils.data.Dataset):
         if self.distortion is not None:
             # undistortion is only applied on color image, not depth!
             color = cv2.undistort(color, K, self.distortion)
+            instance = cv2.undistort(instance, K, self.distortion)
 
         color = torch.from_numpy(color)
+        instance = torch.from_numpy(instance)
+
         K = torch.from_numpy(K)
 
         depth = self._preprocess_depth(depth)
@@ -338,4 +347,6 @@ class GradSLAMDataset(torch.utils.data.Dataset):
             intrinsics.to(self.device).type(self.dtype),
             pose.to(self.device).type(self.dtype),
             # self.retained_inds[index].item(),
+            instance.to(self.device).type(self.dtype),
+
         )

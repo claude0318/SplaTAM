@@ -83,7 +83,7 @@ pip install -e submodules/langsplat_rasterization
 pip install -e submodules/simple-knn
 
 
-
+python scripts/splatam_sgs.py configs/replica/splatam.py
 nohup python scripts/splatam.py configs/replica/splatam.py &
 tail -f nohup.out
 nohup python scripts/splatam_seg.py configs/replica/splatam.py &

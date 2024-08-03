@@ -138,7 +138,7 @@ def cat_params_to_optimizer(new_params, params, optimizer):
 
 def remove_points(to_remove, params, variables, optimizer):
     to_keep = ~to_remove
-    keys = [k for k in params.keys() if k not in ['cam_unnorm_rots', 'cam_trans']]
+    keys = [k for k in params.keys() if k not in ['cam_unnorm_rots', 'cam_trans', 'instance_id']]
     for k in keys:
         group = [g for g in optimizer.param_groups if g['name'] == k][0]
         stored_state = optimizer.state.get(group['params'][0], None)
@@ -160,12 +160,12 @@ def remove_points(to_remove, params, variables, optimizer):
     return params, variables
 
 
+
 def inverse_sigmoid(x):
     return torch.log(x / (1 - x))
 
 
 def prune_gaussians(params, variables, optimizer, iter, prune_dict):
-
     if iter <= prune_dict['stop_after']:
         if (iter >= prune_dict['start_after']) and (iter % prune_dict['prune_every'] == 0):
             if iter == prune_dict['stop_after']:
@@ -187,6 +187,7 @@ def prune_gaussians(params, variables, optimizer, iter, prune_dict):
             params = update_params_and_optimizer(new_params, params, optimizer)
     
     return params, variables
+
 
 
 def densify(params, variables, optimizer, iter, densify_dict):
