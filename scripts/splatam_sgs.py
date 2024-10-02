@@ -10,7 +10,7 @@ from torchvision import transforms
 
 sys.path.insert(0, _BASE_DIR)
 
-print("System Paths:")
+print("System Paths:") 
 for p in sys.path:
     print(p)
 
@@ -36,7 +36,7 @@ from utils.slam_helpers import (
 from utils.slam_external import calc_ssim, build_rotation, prune_gaussians, densify
 
 from diff_gaussian_rasterization import GaussianRasterizer_spla as Renderer
-
+from classification import GaussianManager
 
 ## TODO: 
 ## 1. Add Semantic S_pix ———— 1. curr_data里加入sem                                    done
@@ -71,6 +71,32 @@ def get_dataset(config_dict, basedir, sequence, **kwargs):
     else:
         raise ValueError(f"Unknown dataset name {config_dict['dataset_name']}")
 
+def calculate_iou(pred_mask, true_mask):
+    # Assuming class labels are from 0 to max number of classes-1
+    classes = torch.unique(torch.cat((pred_mask, true_mask), dim=0))
+    iou_scores = []
+    for cls in classes:
+        pred_cls = (pred_mask == cls)
+        true_cls = (true_mask == cls)
+        intersection = (pred_cls & true_cls).sum()
+        union = (pred_cls | true_cls).sum()
+        if union == 0:
+            continue
+        iou = intersection.float() / union.float()
+        iou_scores.append(iou.item())
+
+    # Calculate mean IoU across classes for this frame
+    return sum(iou_scores) / len(iou_scores) if iou_scores else 0
+
+def update_iou_list_and_log(pred_mask, true_mask, iter_time_idx, iou_scores):
+    # Calculate IoU for the current frame
+    current_iou = calculate_iou(pred_mask, true_mask)
+    iou_scores.append(current_iou)
+    
+    # Calculate mIoU up to the current frame
+    current_miou = sum(iou_scores) / len(iou_scores) if iou_scores else 0
+    
+    return current_iou, current_miou
 
 def get_pointcloud(color, depth, sem_col, intrinsics, w2c, transform_pts=True, 
                    mask=None, compute_mean_sq_dist=False, mean_sq_dist_method="projective"): # 要更新 done
@@ -145,7 +171,7 @@ def initialize_params(init_pt_cld, num_frames, mean3_sq_dist, gaussian_distribut
         'log_scales': log_scales,
         'sem': init_pt_cld[:, 6:9]
     }
-
+    # import pdb; pdb.set_trace()
     # Initialize a single gaussian trajectory to model the camera poses relative to the first frame
     cam_rots = np.tile([1, 0, 0, 0], (1, 1))
     cam_rots = np.tile(cam_rots[:, :, None], (1, 1, num_frames))
@@ -223,9 +249,9 @@ def initialize_first_timestep(dataset, num_frames, scene_radius_depth_ratio,
         return params, variables, intrinsics, w2c, cam
 
 
-def get_loss(params, curr_data, variables, iter_time_idx, loss_weights, use_sil_for_loss,
+def get_loss(params, iou_scores, curr_data, variables, iter_time_idx, loss_weights, use_sil_for_loss,
              sil_thres, use_l1, ignore_outlier_depth_loss, tracking=False, 
-             mapping=False, do_ba=False, plot_dir=None, visualize_tracking_loss=False, tracking_iteration=None):
+             mapping=False, do_ba=False, plot_dir=None, visualize_tracking_loss=False, tracking_iteration=None, total_iters=None):
     # Initialize Loss Dictionary
     losses = {}
 
@@ -256,6 +282,7 @@ def get_loss(params, curr_data, variables, iter_time_idx, loss_weights, use_sil_
     depth_sil_rendervar = transformed_params2depthplussilhouette(params, curr_data['w2c'],
                                                                  transformed_gaussians)
     semrendervar = transformed_params2semrendervar(params, transformed_gaussians)
+
 
     # RGB Rendering
     rendervar['means2D'].retain_grad()
@@ -312,59 +339,53 @@ def get_loss(params, curr_data, variables, iter_time_idx, loss_weights, use_sil_
     else:
         losses['sem'] = 0.8 * l1_loss_v1(sem, curr_data['sem']) + 0.2 * (1.0 - calc_ssim(sem, curr_data['sem']))
 
-
+    viz_render_sem = []
+    viz_sem = []
     # Visualize the Diff Images
     if tracking and visualize_tracking_loss:
-        fig, ax = plt.subplots(2, 3, figsize=(12, 6))
-        weighted_render_im = im * color_mask
-        weighted_im = curr_data['im'] * color_mask
-        weighted_render_sem = sem * color_mask
-        weighted_sem = curr_data['sem'] * color_mask
-        weighted_render_depth = depth * mask
-        weighted_depth = curr_data['depth'] * mask
-        diff_rgb = torch.abs(weighted_render_im - weighted_im).mean(dim=0).detach().cpu()
-        diff_depth = torch.abs(weighted_render_depth - weighted_depth).mean(dim=0).detach().cpu()
-        viz_img = torch.clip(weighted_im.permute(1, 2, 0).detach().cpu(), 0, 1)
-        ax[0, 0].imshow(viz_img)
-        ax[0, 0].set_title("Weighted GT RGB")
-        viz_render_img = torch.clip(weighted_render_im.permute(1, 2, 0).detach().cpu(), 0, 1)
-        viz_render_sem = torch.clip(weighted_render_sem.permute(1, 2, 0).detach().cpu(), 0, 1)
-        viz_sem = torch.clip(weighted_sem.permute(1, 2, 0).detach().cpu(), 0, 1)
-        ax[1, 0].imshow(viz_render_img)
-        ax[1, 0].set_title("Weighted Rendered RGB")
-        ax[0, 1].imshow(weighted_depth[0].detach().cpu(), cmap="jet", vmin=0, vmax=6)
-        ax[0, 1].set_title("Weighted GT Depth")
-        ax[1, 1].imshow(weighted_render_depth[0].detach().cpu(), cmap="jet", vmin=0, vmax=6)
-        ax[1, 1].set_title("Weighted Rendered Depth")
-        # ax[0, 2].imshow(diff_rgb, cmap="jet", vmin=0, vmax=0.8)
-        # ax[0, 2].set_title(f"Diff RGB, Loss: {torch.round(losses['im'])}")
-        # ax[1, 2].imshow(diff_depth, cmap="jet", vmin=0, vmax=0.8)
-        # ax[1, 2].set_title(f"Diff Depth, Loss: {torch.round(losses['depth'])}")
-        # ax[0, 2].imshow(presence_sil_mask.detach().cpu(), cmap="gray")
-        # ax[0, 2].set_title("Silhouette Mask")
-        # ax[1, 2].imshow(mask[0].detach().cpu(), cmap="gray")
-        # ax[1, 2].set_title("Loss Mask")
-        ax[0, 2].imshow(viz_sem)
-        ax[0, 2].set_title("Weighted GT Semantic")
-        ax[1, 2].imshow(viz_render_sem)
-        ax[1, 2].set_title("Weighted Rendered Semantic")
-        # Turn off axis
-        for i in range(2):
-            for j in range(3):
-                ax[i, j].axis('off')
-        # Set Title
-        fig.suptitle(f"Tracking Iteration: {iter_time_idx}", fontsize=16)
-        # Figure Tight Layout
-        fig.tight_layout()
-        plot_dir = "/mnt/workfiles/LangSplat/experiments/Replica/room0_0/viz"
-        os.makedirs(plot_dir, exist_ok=True)
-        plt.savefig(os.path.join(plot_dir, f"%04d.png" % iter_time_idx), bbox_inches='tight')
-        plt.close()
-        ## Save Tracking Loss Viz
-        # save_plot_dir = os.path.join(plot_dir, f"tracking_%04d" % iter_time_idx)
-        # os.makedirs(save_plot_dir, exist_ok=True)
-        # plt.savefig(os.path.join(save_plot_dir, f"%04d.png" % tracking_iteration), bbox_inches='tight')
-        # plt.close()
+        if tracking_iteration == total_iters - 1:
+            fig, ax = plt.subplots(2, 3, figsize=(12, 6))
+            weighted_render_im = im * color_mask
+            weighted_im = curr_data['im'] * color_mask
+            weighted_render_sem = sem * color_mask
+            weighted_sem = curr_data['sem'] * color_mask
+            weighted_render_depth = depth * mask
+            weighted_depth = curr_data['depth'] * mask
+            diff_rgb = torch.abs(weighted_render_im - weighted_im).mean(dim=0).detach().cpu()
+            diff_depth = torch.abs(weighted_render_depth - weighted_depth).mean(dim=0).detach().cpu()
+            viz_img = torch.clip(weighted_im.permute(1, 2, 0).detach().cpu(), 0, 1)
+            ax[0, 0].imshow(viz_img)
+            ax[0, 0].set_title("Weighted GT RGB")
+            viz_render_img = torch.clip(weighted_render_im.permute(1, 2, 0).detach().cpu(), 0, 1)
+            viz_render_sem = torch.clip(weighted_render_sem.permute(1, 2, 0).detach().cpu(), 0, 1)
+            viz_sem = torch.clip(weighted_sem.permute(1, 2, 0).detach().cpu(), 0, 1)
+            ax[1, 0].imshow(viz_render_img)
+            ax[1, 0].set_title("Weighted Rendered RGB")
+            ax[0, 1].imshow(weighted_depth[0].detach().cpu(), cmap="jet", vmin=0, vmax=6)
+            ax[0, 1].set_title("Weighted GT Depth")
+            ax[1, 1].imshow(weighted_render_depth[0].detach().cpu(), cmap="jet", vmin=0, vmax=6)
+            ax[1, 1].set_title("Weighted Rendered Depth")
+            ax[0, 2].imshow(viz_sem)
+            ax[0, 2].set_title("Weighted GT Semantic")
+            ax[1, 2].imshow(viz_render_sem)
+            ax[1, 2].set_title("Weighted Rendered Semantic")
+            # Turn off axis
+            for i in range(2):
+                for j in range(3):
+                    ax[i, j].axis('off')
+            # Set Title
+            fig.suptitle(f"Tracking Iteration: {iter_time_idx}", fontsize=16)
+            # Figure Tight Layout
+            fig.tight_layout()
+            plot_dir = "/root/autodl-tmp/SplaTAMgrouping/experiments/Replica/room0_0/viz"
+
+            os.makedirs(plot_dir, exist_ok=True)
+            plt.savefig(os.path.join(plot_dir, f"%04d.png" % iter_time_idx), bbox_inches='tight')
+            plt.close()
+            plt.imsave(os.path.join(plot_dir, f"{iter_time_idx:04d}_viz_render_img.png"), viz_render_img.numpy(), format='png')
+            plt.imsave(os.path.join(plot_dir, f"{iter_time_idx:04d}_viz_render_depth.png"), weighted_render_depth[0].detach().cpu().numpy(), cmap='jet', format='png')
+            plt.imsave(os.path.join(plot_dir, f"{iter_time_idx:04d}_viz_render_sem.png"), viz_render_sem.numpy(), format='png')
+
 
     weighted_losses = {k: v * loss_weights[k] for k, v in losses.items()}
     loss = sum(weighted_losses.values())
@@ -374,7 +395,7 @@ def get_loss(params, curr_data, variables, iter_time_idx, loss_weights, use_sil_
     variables['seen'] = seen
     weighted_losses['loss'] = loss
 
-    return loss, variables, weighted_losses
+    return loss, variables, weighted_losses, viz_render_sem, viz_sem
 
 
 def initialize_new_params(new_pt_cld, mean3_sq_dist, gaussian_distribution): #  要更新
@@ -407,7 +428,7 @@ def initialize_new_params(new_pt_cld, mean3_sq_dist, gaussian_distribution): #  
 
 
 def add_new_gaussians(params, variables, curr_data, sil_thres, 
-                      time_idx, mean_sq_dist_method, gaussian_distribution):
+                      time_idx, mean_sq_dist_method, gaussian_distribution, manager=None):
     # Silhouette Rendering
     transformed_gaussians = transform_to_frame(params, time_idx, gaussians_grad=False, camera_grad=False)
     depth_sil_rendervar = transformed_params2depthplussilhouette(params, curr_data['w2c'],
@@ -447,7 +468,8 @@ def add_new_gaussians(params, variables, curr_data, sil_thres,
         variables['max_2D_radius'] = torch.zeros(num_pts, device="cuda").float()
         new_timestep = time_idx*torch.ones(new_pt_cld.shape[0],device="cuda").float()
         variables['timestep'] = torch.cat((variables['timestep'],new_timestep),dim=0)
-
+        if manager is not None:
+            manager.update_gaussians(new_params)
     return params, variables
 
 
@@ -483,6 +505,7 @@ def convert_params_to_store(params):
     return params_to_store
 
 
+
 def rgbd_slam(config: dict):
     # Print Config
     print("Loaded Config:")
@@ -490,7 +513,7 @@ def rgbd_slam(config: dict):
         config['tracking']['use_depth_loss_thres'] = False
         config['tracking']['depth_loss_thres'] = 100000
     if "visualize_tracking_loss" not in config['tracking']:
-        config['tracking']['visualize_tracking_loss'] = False
+        config['tracking']['visualize_tracking_loss'] = True
     if "gaussian_distribution" not in config:
         config['gaussian_distribution'] = "isotropic"
     print(f"{config}")
@@ -510,7 +533,8 @@ def rgbd_slam(config: dict):
                                group=config['wandb']['group'],
                                name=config['wandb']['name'],
                                config=config)
-
+    
+    iou_scores = []
     # Get Device
     device = torch.device(config["primary_device"])
 
@@ -595,7 +619,7 @@ def rgbd_slam(config: dict):
                                                                                         config['scene_radius_depth_ratio'],
                                                                                         config['mean_sq_dist_method'],
                                                                                         gaussian_distribution=config['gaussian_distribution'])
-    
+
     # Init seperate dataloader for tracking if required
     if seperate_tracking_res:
         tracking_dataset = get_dataset(
@@ -674,6 +698,9 @@ def rgbd_slam(config: dict):
     
     # Iterate over Scan
     for time_idx in tqdm(range(checkpoint_time_idx, num_frames)):
+        # Init category mapping
+        if time_idx == 0:
+            manager = GaussianManager(params)
         # Load RGBD frames incrementally instead of all frames
         color, depth, _, gt_pose, sem = dataset[time_idx]
         # Process poses
@@ -705,6 +732,23 @@ def rgbd_slam(config: dict):
         if time_idx > 0:
             params = initialize_camera_pose(params, time_idx, forward_prop=config['tracking']['forward_prop'])
 
+
+        # import pdb; pdb.set_trace()
+        # 查找属于 [0.502, 0.0, 0.251] 类别的 Gaussians
+        target_category = [0, 0.251, 0.251]
+        indices = manager.find_gaussians_by_category(target_category)
+
+        # 输出数量
+        print(f"Number of Gaussians in category {target_category}: {indices.numel()}")
+
+        # 获取这些 Gaussians 的 means3D 参数
+        means3D_of_target_category = manager.params['means3D'][indices]
+
+        average_means3D = torch.mean(means3D_of_target_category, dim=0)
+        print(f"Average means3D of category {target_category}: {average_means3D}")
+
+        wandb.log({"frame": time_idx, "num_gaussians_in_category": indices.numel()})
+
         # Tracking
         tracking_start_time = time.time()
         if time_idx > 0 and not config['tracking']['use_gt_poses']:
@@ -722,14 +766,15 @@ def rgbd_slam(config: dict):
             while True:
                 iter_start_time = time.time()
                 # Loss for current frame
-                loss, variables, losses = get_loss(params, tracking_curr_data, variables, iter_time_idx, config['tracking']['loss_weights'],
+                loss, variables, losses, viz_render_sem, viz_sem = get_loss(params, iou_scores, tracking_curr_data, variables, iter_time_idx, config['tracking']['loss_weights'],
                                                    config['tracking']['use_sil_for_loss'], config['tracking']['sil_thres'],
                                                    config['tracking']['use_l1'], config['tracking']['ignore_outlier_depth_loss'], tracking=True, 
                                                    plot_dir=eval_dir, visualize_tracking_loss=config['tracking']['visualize_tracking_loss'],
-                                                   tracking_iteration=iter)
+                                                   tracking_iteration=iter, total_iters = num_iters_tracking)
                 if config['use_wandb']:
                     # Report Loss
                     wandb_tracking_step = report_loss(losses, wandb_run, wandb_tracking_step, tracking=True)
+
                 # Backprop
                 loss.backward()
                 # Optimizer Update
@@ -770,6 +815,8 @@ def rgbd_slam(config: dict):
                         break
 
             progress_bar.close()
+            # current_iou, current_miou = update_iou_list_and_log(viz_render_sem, viz_sem, iter_time_idx, iou_scores)
+            # wandb_run.log({"Frame IoU": current_iou, "Mean IoU": current_miou, "Frame Index": iter_time_idx})
             # Copy over the best candidate rotation & translation
             with torch.no_grad():
                 params['cam_unnorm_rots'][..., time_idx] = candidate_cam_unnorm_rot
@@ -784,6 +831,8 @@ def rgbd_slam(config: dict):
                 # Update the camera parameters
                 params['cam_unnorm_rots'][..., time_idx] = rel_w2c_rot_quat
                 params['cam_trans'][..., time_idx] = rel_w2c_tran
+        
+
         # Update the runtime numbers
         tracking_end_time = time.time()
         tracking_frame_time_sum += tracking_end_time - tracking_start_time
@@ -823,7 +872,7 @@ def rgbd_slam(config: dict):
                 # Add new Gaussians to the scene based on the Silhouette
                 params, variables = add_new_gaussians(params, variables, densify_curr_data, 
                                                       config['mapping']['sil_thres'], time_idx,
-                                                      config['mean_sq_dist_method'], config['gaussian_distribution'])
+                                                      config['mean_sq_dist_method'], config['gaussian_distribution'], manager)
                 post_num_pts = params['means3D'].shape[0]
                 if config['use_wandb']:
                     wandb_run.log({"Mapping/Number of Gaussians": post_num_pts,
@@ -851,7 +900,8 @@ def rgbd_slam(config: dict):
                 print(f"\nSelected Keyframes at Frame {time_idx}: {selected_time_idx}")
 
             # Reset Optimizer & Learning Rates for Full Map Optimization
-            optimizer = initialize_optimizer(params, config['mapping']['lrs'], tracking=False) 
+            optimizer = initialize_optimizer(params, config['mapping']['lrs'], tracking=False)
+
 
             # Mapping
             mapping_start_time = time.time()
@@ -879,7 +929,7 @@ def rgbd_slam(config: dict):
                 iter_data = {'cam': cam, 'im': iter_color, 'depth': iter_depth,'sem': iter_sem, 'id': iter_time_idx, 
                              'intrinsics': intrinsics, 'w2c': first_frame_w2c, 'iter_gt_w2c_list': iter_gt_w2c}
                 # Loss for current frame
-                loss, variables, losses = get_loss(params, iter_data, variables, iter_time_idx, config['mapping']['loss_weights'],
+                loss, variables, losses, _, _ = get_loss(params, iou_scores, iter_data, variables, iter_time_idx, config['mapping']['loss_weights'],
                                                 config['mapping']['use_sil_for_loss'], config['mapping']['sil_thres'],
                                                 config['mapping']['use_l1'], config['mapping']['ignore_outlier_depth_loss'], mapping=True)
                 if config['use_wandb']:
@@ -890,7 +940,7 @@ def rgbd_slam(config: dict):
                 with torch.no_grad():
                     # Prune Gaussians
                     if config['mapping']['prune_gaussians']:
-                        params, variables = prune_gaussians(params, variables, optimizer, iter, config['mapping']['pruning_dict'])
+                        params, variables = prune_gaussians(params, variables, optimizer, iter, config['mapping']['pruning_dict'], manager)
                         if config['use_wandb']:
                             wandb_run.log({"Mapping/Number of Gaussians - Pruning": params['means3D'].shape[0],
                                            "Mapping/step": wandb_mapping_step})

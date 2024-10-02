@@ -75,7 +75,8 @@ source /home/caozihao/anaconda3/etc/profile.d/conda.sh
 conda create -n splatam python=3.10
 conda activate splatam
 conda install -c "nvidia/label/cuda-11.6.0" cuda-toolkit
-conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge
+pip install torch==1.12.1+cu116 --extra-index-url https://download.pytorch.org/whl/cu116
+pip install torchvision==0.13.1+cu116 torchaudio==0.12.1 --extra-index-url https://download.pytorch.org/whl/cu116
 pip install -r requirements.txt
 # pip install -e submodules/segment-anything-langsplat 
 pip install -e submodules/diff_gaussian_rasterization
@@ -83,6 +84,8 @@ pip install -e submodules/langsplat_rasterization
 pip install -e submodules/simple-knn
 
 
+
+python scripts/splatam_hull.py configs/replica/splatam.py
 python scripts/splatam_sgs.py configs/replica/splatam.py
 nohup python scripts/splatam.py configs/replica/splatam.py &
 tail -f nohup.out
